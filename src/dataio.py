@@ -208,8 +208,14 @@ def load_price_data(config: Dict) -> pd.DataFrame:
     is_trading_btc = (idx <= trade_end)
     gold_trade_weekdays_only = bool(data_cfg.get("gold_trade_weekdays_only", True))
     gold_trade_on_filled = bool(data_cfg.get("gold_trade_on_filled", False))
+    gold_trade_fill_method = data_cfg.get("gold_trade_fill_method", "ffill")
     if gold_trade_on_filled:
-        gold_trade_series = gold_series_raw.ffill().bfill()
+        if gold_trade_fill_method == "ffill":
+            gold_trade_series = gold_series_raw.ffill()
+        elif gold_trade_fill_method == "ffill_bfill":
+            gold_trade_series = gold_series_raw.ffill().bfill()
+        else:
+            raise ValueError(f"unsupported gold_trade_fill_method: {gold_trade_fill_method}")
         gold_trade_available = gold_trade_series.notna()
     else:
         gold_trade_available = gold_series_raw.notna()
@@ -224,6 +230,7 @@ def load_price_data(config: Dict) -> pd.DataFrame:
             "date": idx,
             "t": range(0, len(idx)),
             "price_gold": gold_series.values,
+            "price_gold_trade": (gold_trade_series.values if gold_trade_on_filled else gold_series_raw.values),
             "price_btc": btc_series.values,
             "is_trading_gold": is_trading_gold,
             "is_trading_btc": is_trading_btc,
@@ -245,6 +252,7 @@ def load_price_data(config: Dict) -> pd.DataFrame:
         "gold_ffill_for_valuation": gold_ffill_for_valuation,
         "gold_trade_weekdays_only": gold_trade_weekdays_only,
         "gold_trade_on_filled": gold_trade_on_filled,
+        "gold_trade_fill_method": gold_trade_fill_method,
     }
     out.attrs["data_info"] = data_info
 

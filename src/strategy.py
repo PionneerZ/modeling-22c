@@ -32,22 +32,26 @@ def size_buy(
     min_cash_reserve: float,
     mode: str = "score",
     fixed_fraction: float = 0.5,
+    fee_rate: float = 0.0,
 ) -> float:
     if cash <= min_cash_reserve or price <= 0:
         return 0.0
     available_cash = max(0.0, cash - min_cash_reserve)
+    effective_price = price * (1 + fee_rate)
+    if effective_price <= 0:
+        return 0.0
     if mode == "fixed_fraction":
         fraction = max(0.0, min(1.0, fixed_fraction))
         spend = available_cash * fraction
-    elif mode == "score":
+        return spend / effective_price
+    if mode == "score":
         if score <= 0:
             return 0.0
         score_norm = score / max(price, 1e-9)
         fraction = max(0.0, min(buy_cap, buy_scale * score_norm))
         spend = available_cash * fraction
-    else:
-        raise ValueError(f"unsupported buy sizing mode: {mode}")
-    return spend / price
+        return spend / effective_price
+    raise ValueError(f"unsupported buy sizing mode: {mode}")
 
 
 def choose_buy_asset(

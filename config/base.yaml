@@ -17,8 +17,9 @@ data:
   end_date_mode: trade_end  # trade_end | valuation_end
   calendar_anchor: btc
   gold_ffill_for_valuation: true
-  gold_trade_weekdays_only: false
-  gold_trade_on_filled: true
+  gold_trade_weekdays_only: true
+  gold_trade_on_filled: false
+  gold_trade_fill_method: ffill
 
 fees:
   fee_gold: 0.01
@@ -29,36 +30,42 @@ momentum:
   w_scheme: equal  # equal | linear | exp
 
 thresholds:
-  thr_grad: 0.0
-  thr_ma_diff: 0.0
+  thr_grad: 1.0
+  thr_ma_diff: 1.0
 
 weight_factor:
   W_C: 100000.0
-  W_use: ["gold", "btc"]
-  apply_mode: score  # compare | score | none
-  use_t_plus_one: false
+  W_use: ["btc"]
+  apply_mode: compare  # compare | score | none
+  use_t_plus_one: true
 
 selling:
   margin_L: 10.0
   avg_cost_method: weighted_avg  # weighted_avg | fifo
-  skip_if_buy_signal: false
+  skip_if_buy_signal: true
 
 extreme:
   extreme_C: 5.0
   extreme_sell_pct_E: 0.89
   extreme_deltaP: null
+  assets: ["btc"]
+  min_history_days: 420
 
 no_buy:
   rebuy_pct_N: 0.6
   no_buy_days: 0
-  mode: days
+  mode: price
+  scope: global
+  rebuy_on_release: true
+  max_price_ref: max  # max | sell
+  rebuy_fraction: 1.0
 
 holding:
   hold_days_T: 12
 
 buy_sizing:
   mode: fixed_fraction  # score | fixed_fraction
-  fixed_fraction: 0.5
+  fixed_fraction: 0.6
   buy_scale: 10.0
   buy_cap: 1.0
   buy_min_cash_reserve: 0.0
@@ -70,15 +77,15 @@ strategy:
   mode: full  # full | baseline
 
 signals:
-  ma_include_current: false
-  require_full_window: true
-  reversion_mode: below_ma_pct  # below_ma | below_ma_pct
+  ma_include_current: true
+  require_full_window: false
+  reversion_mode: below_ma  # below_ma | below_ma_pct
   reversion_pct: null
-  score_mode: sum  # max | sum
-  score_threshold: 100.0
+  score_mode: max  # max | sum
+  score_threshold: 0.0
 
 buy_logic:
-  mode: multi  # single | multi
+  mode: single  # single | multi
 
 plots:
   window_btc_t: [1610, 1760]
