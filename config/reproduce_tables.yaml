@@ -1,0 +1,19 @@
+base_config: config/base.yaml
+
+param_grid:
+  fee_gold: 0.01
+  fee_btc: 0.02
+  T: [5, 6, 12]
+  N: [0.4, 0.6, 0.65]
+  E: [0.86, 0.89, 0.895]
+
+fee_sensitivity:
+  params:
+    T: 12
+    N: 0.6
+    E: 0.89
+  fee_pairs:
+    - [0.01, 0.02]
+    - [0.02, 0.03]
+    - [0.03, 0.05]
+    - [0.1, 0.1]

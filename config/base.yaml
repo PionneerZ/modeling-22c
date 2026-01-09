@@ -1,0 +1,85 @@
+run:
+  initial_cash: 1000.0
+  seed: 42
+  change_note: "align: memo/notebook signal/weight/sizing; target full paper reproduction"
+
+data:
+  path: data/sample_prices.csv  # fallback sample
+  gold_path: problem/LBMA-GOLD.csv
+  btc_path: problem/BCHAIN-MKPRU.csv
+  column_map:
+    date: Date
+    gold: "USD (PM)"
+    btc: Value
+  date_format: "%m/%d/%y"
+  start_date: "2016-09-11"
+  end_date: "2021-09-10"
+  end_date_mode: trade_end  # trade_end | valuation_end
+  calendar_anchor: btc
+  gold_ffill_for_valuation: true
+  gold_trade_weekdays_only: false
+  gold_trade_on_filled: true
+
+fees:
+  fee_gold: 0.01
+  fee_btc: 0.02
+
+momentum:
+  n_window: 5
+  w_scheme: equal  # equal | linear | exp
+
+thresholds:
+  thr_grad: 0.0
+  thr_ma_diff: 0.0
+
+weight_factor:
+  W_C: 100000.0
+  W_use: ["gold", "btc"]
+  apply_mode: score  # compare | score | none
+  use_t_plus_one: false
+
+selling:
+  margin_L: 10.0
+  avg_cost_method: weighted_avg  # weighted_avg | fifo
+  skip_if_buy_signal: false
+
+extreme:
+  extreme_C: 5.0
+  extreme_sell_pct_E: 0.89
+  extreme_deltaP: null
+
+no_buy:
+  rebuy_pct_N: 0.6
+  no_buy_days: 0
+  mode: days
+
+holding:
+  hold_days_T: 12
+
+buy_sizing:
+  mode: fixed_fraction  # score | fixed_fraction
+  fixed_fraction: 0.5
+  buy_scale: 10.0
+  buy_cap: 1.0
+  buy_min_cash_reserve: 0.0
+
+execution:
+  sell_then_buy: true
+
+strategy:
+  mode: full  # full | baseline
+
+signals:
+  ma_include_current: false
+  require_full_window: true
+  reversion_mode: below_ma_pct  # below_ma | below_ma_pct
+  reversion_pct: null
+  score_mode: sum  # max | sum
+  score_threshold: 100.0
+
+buy_logic:
+  mode: multi  # single | multi
+
+plots:
+  window_btc_t: [1610, 1760]
+  window_gold_t: [460, 560]

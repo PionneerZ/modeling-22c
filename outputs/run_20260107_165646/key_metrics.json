@@ -1,0 +1,37 @@
+{
+  "final_nav": 1275.6931638717865,
+  "ROI": 0.27569316387178655,
+  "maxDD": -0.09122268023197744,
+  "max_drawdown": -0.09122268023197744,
+  "trades_count": 3172,
+  "params": {
+    "hold_days_T": 12,
+    "rebuy_pct_N": 0.6,
+    "extreme_sell_pct_E": 0.89,
+    "extreme_C": 5.0,
+    "margin_L": 0.0,
+    "n_window": 5,
+    "w_scheme": "linear",
+    "thr_grad": 1.0,
+    "thr_ma_diff": 1.0,
+    "buy_scale": 10.0,
+    "buy_cap": 1.0
+  },
+  "fee_pair": {
+    "fee_gold": 0.01,
+    "fee_btc": 0.02
+  },
+  "run_id": "run_20260107_165646",
+  "data_range": "2016-09-11 to 2021-09-11",
+  "calendar_mode": "btc",
+  "end_date_mode": "valuation_end",
+  "seed": 42,
+  "W": {
+    "W_C": 1.0,
+    "W_use": [
+      "gold"
+    ],
+    "W_min": 2.995869594589939e-07,
+    "W_max": 1.0
+  }
+}
