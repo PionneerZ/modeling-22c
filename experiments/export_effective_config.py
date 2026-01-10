@@ -1,3 +1,5 @@
+"""Utility: dump an expanded config with resolved defaults."""
+
 from __future__ import annotations
 
 import argparse

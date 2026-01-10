@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.indicators import compute_asset_signals
 from src.portfolio import Portfolio
+from src.params import resolve_paper_params
 from src.strategy import choose_buy_asset, extreme_sell, extreme_trigger, should_sell, size_buy
 from src.utils import calc_drawdown
 
@@ -20,7 +21,7 @@ def _state_label(state_map: Dict[str, bool]) -> str:
     return active[0]
 
 
-def run_backtest(price_df: pd.DataFrame, config: Dict):
+def run_backtest(price_df: pd.DataFrame, config: Dict, return_debug: bool = False):
     fees = config["fees"]
     momentum_cfg = config["momentum"]
     thresholds = config["thresholds"]
@@ -33,14 +34,38 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
     exec_cfg = config["execution"]
     signals_cfg = config.get("signals", {})
     buy_logic_cfg = config.get("buy_logic", {})
+    paper_params = resolve_paper_params(config)
+    hold_T = int(paper_params["hold_T"])
+    reentry_N = float(paper_params["reentry_N"])
+    extreme_E = float(paper_params["extreme_E"])
+    momentum_window = int(paper_params["lookback_M"])
     no_buy_scope = str(no_buy_cfg.get("scope", "asset")).lower()
     if no_buy_scope not in {"asset", "global"}:
         raise ValueError(f"unsupported no_buy.scope: {no_buy_scope}")
     no_buy_rebuy_on_release = bool(no_buy_cfg.get("rebuy_on_release", False))
-    no_buy_max_price_ref = str(no_buy_cfg.get("max_price_ref", "max")).lower()
-    if no_buy_max_price_ref not in {"max", "sell"}:
+    no_buy_max_price_ref = str(no_buy_cfg.get("max_price_ref", "extreme_window")).lower()
+    if no_buy_max_price_ref not in {"extreme_window", "sell"}:
         raise ValueError(f"unsupported no_buy.max_price_ref: {no_buy_max_price_ref}")
+    no_buy_release_direction = str(no_buy_cfg.get("release_direction", "drop")).lower()
+    if no_buy_release_direction not in {"drop", "recover"}:
+        raise ValueError(f"unsupported no_buy.release_direction: {no_buy_release_direction}")
     no_buy_rebuy_fraction = no_buy_cfg.get("rebuy_fraction")
+    no_buy_release_mode = str(no_buy_cfg.get("release_mode", "hybrid")).lower()
+    if no_buy_release_mode not in {"price", "days", "hybrid"}:
+        raise ValueError(f"unsupported no_buy.release_mode: {no_buy_release_mode}")
+    no_buy_release_frac = no_buy_cfg.get("release_frac")
+    if no_buy_release_frac is None:
+        no_buy_release_frac = reentry_N
+    no_buy_release_frac = float(no_buy_release_frac)
+    no_buy_cooldown_days = int(no_buy_cfg.get("cooldown_days", 0) or 0)
+    min_days_between_buys = int(holding_cfg.get("min_days_between_buys", 0) or 0)
+    min_days_between_sells = holding_cfg.get("min_days_between_sells")
+    if min_days_between_sells is None:
+        min_days_between_sells = hold_T
+    min_days_between_sells = int(min_days_between_sells)
+    sell_hold_ref = str(holding_cfg.get("sell_hold_ref", "entry")).lower()
+    if sell_hold_ref not in {"entry", "last_buy"}:
+        raise ValueError(f"unsupported holding.sell_hold_ref: {sell_hold_ref}")
 
     portfolio = Portfolio(
         cash=config["run"]["initial_cash"],
@@ -49,6 +74,8 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
 
     trades: List[Dict] = []
     records: List[Dict] = []
+    debug_rows: List[Dict] = []
+    state_events: List[Dict] = []
 
     grad_hist = {"gold": [], "btc": []}
     extreme_active = {"gold": False, "btc": False}
@@ -56,13 +83,14 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
     no_buy_active = {"gold": False, "btc": False}
     no_buy_days_left = {"gold": 0, "btc": 0}
     no_buy_max_price = {"gold": 0.0, "btc": 0.0}
-    hold_left = {"gold": 0, "btc": 0}
+    entry_t = {"gold": None, "btc": None}
+    last_buy_t = {"gold": -10_000, "btc": -10_000}
 
     extreme_assets = [a.lower() for a in extreme_cfg.get("assets", ["gold", "btc"])]
     extreme_assets = [a for a in extreme_assets if a in {"gold", "btc"}]
     if not extreme_assets:
         extreme_assets = ["gold", "btc"]
-    min_extreme_history = int(extreme_cfg.get("min_history_days", 0) or 0)
+    min_extreme_history_days = int(extreme_cfg.get("min_history_days", 0) or 0)
 
     price_gold_series = price_df["price_gold"].to_numpy()
     has_gold_trade = "price_gold_trade" in price_df.columns
@@ -76,7 +104,9 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
     reversion_mode = signals_cfg.get("reversion_mode", "below_ma")
     reversion_pct = signals_cfg.get("reversion_pct")
     if reversion_mode == "below_ma_pct" and reversion_pct is None:
-        reversion_pct = no_buy_cfg.get("rebuy_pct_N")
+        reversion_pct = reentry_N
+    if reversion_mode == "below_ma_pct" and reversion_pct is None:
+        raise ValueError("signals.reversion_pct is required for reversion_mode=below_ma_pct")
     score_mode = signals_cfg.get("score_mode", "max")
     score_threshold = float(signals_cfg.get("score_threshold", 0.0) or 0.0)
     ma_include_current = bool(signals_cfg.get("ma_include_current", True))
@@ -85,6 +115,12 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
     w_use = [s.lower() for s in weight_cfg.get("W_use", [])]
     use_t_plus_one = bool(weight_cfg.get("use_t_plus_one", True))
     buy_mode = buy_logic_cfg.get("mode", "single")
+    rebalance_on_buy = bool(buy_logic_cfg.get("rebalance_on_buy", False))
+    rebalance_threshold = buy_logic_cfg.get("rebalance_threshold")
+    if rebalance_threshold is None:
+        rebalance_threshold = score_threshold
+    rebalance_threshold = float(rebalance_threshold)
+    rebalance_ignore_hold = bool(buy_logic_cfg.get("rebalance_ignore_hold", True))
     buy_size_mode = buy_cfg.get("mode", "score")
     buy_fixed_fraction = buy_cfg.get("fixed_fraction", 0.5)
     skip_sell_on_buy = bool(selling_cfg.get("skip_if_buy_signal", True))
@@ -94,6 +130,7 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
     baseline_done = False
 
     for i, row in price_df.iterrows():
+        trades_start = len(trades)
         date = row["date"]
         t_index = int(row["t"]) if "t" in row else i
         price_gold = float(row["price_gold"])
@@ -104,11 +141,45 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
         chosen_asset = "none"
         sell_flag_gold = False
         sell_flag_btc = False
+        extreme_history_ok = t_index >= min_extreme_history_days
+        skipped_extreme_due_to_history = not extreme_history_ok
 
-        # decrement holding counters
-        for asset in hold_left:
-            if hold_left[asset] > 0:
-                hold_left[asset] -= 1
+        def log_state_event(
+            state_type: str,
+            asset: str,
+            prev: bool,
+            now: bool,
+            reason: str,
+            no_buy_days_left_val: int | None = None,
+            no_buy_max_price_val: float | None = None,
+            no_buy_max_price_ref_val: str | None = None,
+            no_buy_released_val: bool | None = None,
+            extreme_metric_val: float | None = None,
+            extreme_threshold_val: float | None = None,
+            extreme_max_price_val: float | None = None,
+        ) -> None:
+            state_events.append(
+                {
+                    "t": t_index,
+                    "date": date,
+                    "asset": asset,
+                    "state_type": state_type,
+                    "prev": prev,
+                    "now": now,
+                    "reason": reason,
+                    "release_mode": no_buy_release_mode,
+                    "release_direction": no_buy_release_direction,
+                    "release_frac": no_buy_release_frac,
+                    "cooldown_days": no_buy_cooldown_days,
+                    "no_buy_days_left": no_buy_days_left_val,
+                    "no_buy_max_price": no_buy_max_price_val,
+                    "no_buy_max_price_ref": no_buy_max_price_ref_val,
+                    "no_buy_released": no_buy_released_val,
+                    "extreme_metric": extreme_metric_val,
+                    "extreme_threshold": extreme_threshold_val,
+                    "extreme_max_price": extreme_max_price_val,
+                }
+            )
 
         # update no-buy counters
         for asset in no_buy_days_left:
@@ -133,7 +204,7 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
             gold_prices = price_gold_series[: i + 1]
             signal_gold = compute_asset_signals(
                 gold_prices,
-                momentum_cfg["n_window"],
+                momentum_window,
                 momentum_cfg["w_scheme"],
                 thresholds["thr_grad"],
                 thresholds["thr_ma_diff"],
@@ -161,7 +232,7 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
             btc_prices = price_btc_series[: i + 1]
             signal_btc = compute_asset_signals(
                 btc_prices,
-                momentum_cfg["n_window"],
+                momentum_window,
                 momentum_cfg["w_scheme"],
                 thresholds["thr_grad"],
                 thresholds["thr_ma_diff"],
@@ -215,7 +286,9 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                     )
                     trades.append(trade)
                     baseline_done = True
-                    hold_left["btc"] = holding_cfg["hold_days_T"]
+                    if entry_t["btc"] is None:
+                        entry_t["btc"] = t_index
+                    last_buy_t["btc"] = t_index
 
             nav_total, nav_cash, nav_gold, nav_btc = portfolio.nav(price_gold, price_btc)
             records.append(
@@ -233,8 +306,20 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                     "nav_btc": nav_btc,
                     "state_extreme": "none",
                     "state_no_buy": "none",
-                    "hold_left_gold": hold_left["gold"],
-                    "hold_left_btc": hold_left["btc"],
+                    "hold_left_gold": max(
+                        0,
+                        min_days_between_sells
+                        - (t_index - (last_buy_t["gold"] if sell_hold_ref == "last_buy" else entry_t["gold"])),
+                    )
+                    if (last_buy_t["gold"] if sell_hold_ref == "last_buy" else entry_t["gold"]) is not None
+                    else 0,
+                    "hold_left_btc": max(
+                        0,
+                        min_days_between_sells
+                        - (t_index - (last_buy_t["btc"] if sell_hold_ref == "last_buy" else entry_t["btc"])),
+                    )
+                    if (last_buy_t["btc"] if sell_hold_ref == "last_buy" else entry_t["btc"]) is not None
+                    else 0,
                     "profit_gold": signal_gold["profit_score"],
                     "profit_btc": signal_btc["profit_score"],
                     "chosen_buy_asset": "btc" if baseline_done else "none",
@@ -242,31 +327,120 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                     "sell_flag_btc": False,
                 }
             )
+            if return_debug:
+                trades_today = trades[trades_start:]
+                actions = {"gold": [], "btc": []}
+                for trade in trades_today:
+                    asset = trade.get("asset")
+                    if asset in actions:
+                        actions[asset].append(trade)
+
+                for asset, price in [("gold", price_gold_trade), ("btc", price_btc)]:
+                    action = "none"
+                    action_reason = ""
+                    if actions[asset]:
+                        actual = [t for t in actions[asset] if t.get("qty", 0) > 0]
+                        chosen_trade = actual[0] if actual else actions[asset][0]
+                        if chosen_trade.get("qty", 0) > 0:
+                            action = chosen_trade.get("side", "none")
+                        else:
+                            action = "blocked"
+                        action_reason = chosen_trade.get("reason", "")
+
+                    debug_rows.append(
+                        {
+                            "date": date,
+                            "t": t_index,
+                            "asset": asset,
+                            "price": price,
+                            "E": extreme_E,
+                            "threshold": np.nan,
+                            "no_buy_state": "none",
+                            "extreme_state": "none",
+                            "target_position": "none",
+                            "action": action,
+                            "action_reason": action_reason,
+                            "no_buy_released": False,
+                            "cooldown_remaining": no_buy_days_left[asset],
+                            "skipped_extreme_due_to_history": skipped_extreme_due_to_history,
+                            "extreme_metric": np.nan,
+                            "extreme_threshold": np.nan,
+                        }
+                    )
             continue
 
+        # update gradient history before extreme detection (include current gradient)
+        grad_hist["gold"].append(signal_gold["gradient"])
+        grad_hist["btc"].append(signal_btc["gradient"])
+
         # extreme detection
+        def avg_recent(values: List[float], window: int) -> float:
+            if not values:
+                return 0.0
+            if window <= 0 or window > len(values):
+                window = len(values)
+            return float(np.mean(values[-window:]))
+
         def avg_positive(values: List[float]) -> float:
             positives = [v for v in values if v > 0]
             if not positives:
                 return 0.0
             return float(np.mean(positives))
 
-        avg_grad_gold = avg_positive(grad_hist["gold"])
-        avg_grad_btc = avg_positive(grad_hist["btc"])
-        if (
+        extreme_avg_mode = str(extreme_cfg.get("avg_mode", "positive_history")).lower()
+        extreme_avg_window = int(extreme_cfg.get("avg_window_days", momentum_window) or momentum_window)
+        if extreme_avg_mode == "window":
+            avg_grad_gold = avg_recent(grad_hist["gold"], extreme_avg_window)
+            avg_grad_btc = avg_recent(grad_hist["btc"], extreme_avg_window)
+        elif extreme_avg_mode == "positive_history":
+            avg_grad_gold = avg_positive(grad_hist["gold"])
+            avg_grad_btc = avg_positive(grad_hist["btc"])
+        else:
+            raise ValueError(f"unsupported extreme.avg_mode: {extreme_avg_mode}")
+        extreme_threshold_gold = extreme_cfg["extreme_C"] * avg_grad_gold
+        extreme_threshold_btc = extreme_cfg["extreme_C"] * avg_grad_btc
+        extreme_metric_gold = signal_gold["gradient"] - extreme_threshold_gold
+        extreme_metric_btc = signal_btc["gradient"] - extreme_threshold_btc
+        extreme_signal_gold = (
             "gold" in extreme_assets
-            and t_index >= min_extreme_history
+            and extreme_history_ok
             and portfolio.positions["gold"] > 0
             and extreme_trigger(signal_gold["gradient"], avg_grad_gold, extreme_cfg["extreme_C"])
-        ):
+        )
+        if extreme_signal_gold:
+            prev_state = extreme_active["gold"]
+            if not prev_state:
+                log_state_event(
+                    "extreme",
+                    "gold",
+                    prev_state,
+                    True,
+                    "extreme_trigger",
+                    extreme_metric_val=extreme_metric_gold,
+                    extreme_threshold_val=extreme_threshold_gold,
+                    extreme_max_price_val=price_gold_trade,
+                )
             extreme_active["gold"] = True
             extreme_max_price["gold"] = max(extreme_max_price["gold"], price_gold_trade)
-        if (
+        extreme_signal_btc = (
             "btc" in extreme_assets
-            and t_index >= min_extreme_history
+            and extreme_history_ok
             and portfolio.positions["btc"] > 0
             and extreme_trigger(signal_btc["gradient"], avg_grad_btc, extreme_cfg["extreme_C"])
-        ):
+        )
+        if extreme_signal_btc:
+            prev_state = extreme_active["btc"]
+            if not prev_state:
+                log_state_event(
+                    "extreme",
+                    "btc",
+                    prev_state,
+                    True,
+                    "extreme_trigger",
+                    extreme_metric_val=extreme_metric_btc,
+                    extreme_threshold_val=extreme_threshold_btc,
+                    extreme_max_price_val=price_btc,
+                )
             extreme_active["btc"] = True
             extreme_max_price["btc"] = max(extreme_max_price["btc"], price_btc)
 
@@ -276,27 +450,42 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
         if "btc" in extreme_assets and extreme_active["btc"]:
             extreme_max_price["btc"] = max(extreme_max_price["btc"], price_btc)
 
-        grad_hist["gold"].append(signal_gold["gradient"])
-        grad_hist["btc"].append(signal_btc["gradient"])
-
-        # refresh no-buy state based on price threshold
-        no_buy_mode = no_buy_cfg.get("mode", "both")
+        # refresh no-buy state based on paper reentry threshold
         no_buy_released = {"gold": False, "btc": False}
         for asset, price in [("gold", price_gold_trade), ("btc", price_btc)]:
             if no_buy_active[asset]:
                 allow_by_days = no_buy_days_left[asset] <= 0
-                allow_by_price = price <= no_buy_cfg["rebuy_pct_N"] * no_buy_max_price[asset]
+                allow_by_price = False
+                if no_buy_max_price[asset] > 0:
+                    price_trigger = no_buy_release_frac * no_buy_max_price[asset]
+                    if no_buy_release_direction == "recover":
+                        allow_by_price = price >= price_trigger
+                    else:
+                        allow_by_price = price <= price_trigger
                 released = False
-                if no_buy_mode == "days" and allow_by_days:
-                    released = True
-                elif no_buy_mode == "price" and allow_by_price:
-                    released = True
-                elif no_buy_mode == "either" and (allow_by_days or allow_by_price):
-                    released = True
-                elif no_buy_mode == "both" and (allow_by_days and allow_by_price):
-                    released = True
+                if no_buy_release_mode == "days":
+                    released = allow_by_days
+                elif no_buy_release_mode == "price":
+                    released = allow_by_price
+                else:
+                    released = allow_by_days and allow_by_price
                 if released:
+                    release_reason = f"release_{no_buy_release_mode}"
+
+                    prev_state = no_buy_active[asset]
                     no_buy_active[asset] = False
+                    if prev_state:
+                        log_state_event(
+                            "no_buy",
+                            asset,
+                            prev_state,
+                            False,
+                            release_reason,
+                            no_buy_days_left_val=no_buy_days_left[asset],
+                            no_buy_max_price_val=no_buy_max_price[asset],
+                            no_buy_max_price_ref_val=no_buy_max_price_ref,
+                            no_buy_released_val=no_buy_rebuy_on_release,
+                        )
                     if no_buy_rebuy_on_release:
                         no_buy_released[asset] = True
         no_buy_global = no_buy_scope == "global" and any(no_buy_active.values())
@@ -350,9 +539,10 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                 if extreme_sell(
                     price,
                     extreme_max_price[asset],
-                    extreme_cfg["extreme_sell_pct_E"],
+                    extreme_E,
                     extreme_cfg.get("extreme_deltaP"),
                 ):
+                    max_price_before = extreme_max_price[asset]
                     trade = portfolio.sell(asset, portfolio.positions[asset], price, fee)
                     trade.update(
                         {
@@ -365,12 +555,43 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                         }
                     )
                     trades.append(trade)
+                    entry_t[asset] = None
+                    prev_extreme = extreme_active[asset]
                     extreme_active[asset] = False
+                    if prev_extreme:
+                        log_state_event(
+                            "extreme",
+                            asset,
+                            prev_extreme,
+                            False,
+                            "extreme_sell",
+                            extreme_metric_val=signal_gold["gradient"]
+                            if asset == "gold"
+                            else signal_btc["gradient"],
+                            extreme_threshold_val=extreme_threshold_gold
+                            if asset == "gold"
+                            else extreme_threshold_btc,
+                            extreme_max_price_val=max_price_before,
+                        )
+                    prev_no_buy = no_buy_active[asset]
                     no_buy_active[asset] = True
-                    no_buy_days_left[asset] = no_buy_cfg.get("no_buy_days", 0)
-                    no_buy_max_price[asset] = (
-                        price if no_buy_max_price_ref == "sell" else extreme_max_price[asset]
-                    )
+                    no_buy_days_left[asset] = no_buy_cooldown_days
+                    if no_buy_max_price_ref == "sell":
+                        no_buy_max_price[asset] = price
+                    else:
+                        no_buy_max_price[asset] = extreme_max_price[asset]
+                    if not prev_no_buy:
+                        log_state_event(
+                            "no_buy",
+                            asset,
+                            prev_no_buy,
+                            True,
+                            "extreme_sell",
+                            no_buy_days_left_val=no_buy_days_left[asset],
+                            no_buy_max_price_val=no_buy_max_price[asset],
+                            no_buy_max_price_ref_val=no_buy_max_price_ref,
+                            no_buy_released_val=False,
+                        )
                     extreme_max_price[asset] = 0.0
         else:
             # decide buy intent (paper: compare signals first, then sell the other asset)
@@ -413,6 +634,51 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
             if skip_sell_on_buy and buy_mode == "single" and chosen:
                 sell_candidates = ["btc"] if chosen == "gold" else ["gold"]
 
+            # optional rebalance: sell the other asset when a strong buy signal fires
+            if buy_mode == "single" and chosen and rebalance_on_buy:
+                chosen_score = score_gold_for_threshold if chosen == "gold" else score_btc_for_threshold
+                if chosen_score >= rebalance_threshold:
+                    other = "btc" if chosen == "gold" else "gold"
+                    if other in sell_candidates and portfolio.positions[other] > 0:
+                        other_price = price_gold_trade if other == "gold" else price_btc
+                        other_fee = fees["fee_gold"] if other == "gold" else fees["fee_btc"]
+                        other_can_trade = can_trade_gold if other == "gold" else can_trade_btc
+                        if not other_can_trade:
+                            log_blocked(other, "sell", "blocked_by_calendar", other_price)
+                        else:
+                            if not rebalance_ignore_hold and entry_t[other] is not None and min_days_between_sells > 0:
+                                days_held = t_index - entry_t[other]
+                                if days_held < min_days_between_sells:
+                                    log_blocked(other, "sell", "blocked_by_hold", other_price)
+                                else:
+                                    trade = portfolio.sell(
+                                        other, portfolio.positions[other], other_price, other_fee
+                                    )
+                                    trade.update(
+                                        {
+                                            "date": date,
+                                            "t": t_index,
+                                            "reason": "rebalance_sell",
+                                            "signal_score": chosen_score,
+                                        }
+                                    )
+                                    trades.append(trade)
+                                    entry_t[other] = None
+                            else:
+                                trade = portfolio.sell(
+                                    other, portfolio.positions[other], other_price, other_fee
+                                )
+                                trade.update(
+                                    {
+                                        "date": date,
+                                        "t": t_index,
+                                        "reason": "rebalance_sell",
+                                        "signal_score": chosen_score,
+                                    }
+                                )
+                                trades.append(trade)
+                                entry_t[other] = None
+
             # normal selling
             for asset, price, fee, can_trade in [
                 ("gold", price_gold_trade, fees["fee_gold"], can_trade_gold),
@@ -425,9 +691,12 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                 if not can_trade:
                     log_blocked(asset, "sell", "blocked_by_calendar", price)
                     continue
-                if hold_left[asset] > 0:
-                    log_blocked(asset, "sell", "blocked_by_hold", price)
-                    continue
+                hold_ref = last_buy_t[asset] if sell_hold_ref == "last_buy" else entry_t[asset]
+                if hold_ref is not None and min_days_between_sells > 0:
+                    days_held = t_index - hold_ref
+                    if days_held < min_days_between_sells:
+                        log_blocked(asset, "sell", "blocked_by_hold", price)
+                        continue
                 net_sell_price = price * (1 - fee)
                 avg_cost = portfolio.avg_cost[asset]
                 trade = portfolio.sell(asset, portfolio.positions[asset], price, fee)
@@ -440,6 +709,8 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                     }
                 )
                 trades.append(trade)
+                if portfolio.positions[asset] <= 0:
+                    entry_t[asset] = None
 
             # buy decision
             def attempt_buy(
@@ -456,9 +727,13 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                 if not can_trade:
                     log_blocked(asset, "buy", "blocked_by_calendar", price)
                     return False
+                if min_days_between_buys > 0 and (t_index - last_buy_t[asset]) < min_days_between_buys:
+                    log_blocked(asset, "buy", "blocked_by_buy_cooldown", price)
+                    return False
                 fixed_fraction = buy_fixed_fraction
                 if fixed_fraction_override is not None:
                     fixed_fraction = fixed_fraction_override
+                was_flat = portfolio.positions[asset] <= 0
                 qty = size_buy(
                     portfolio.cash,
                     price,
@@ -478,7 +753,9 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                     ) else "buy_reversion"
                     trade.update({"date": date, "t": t_index, "reason": reason, "signal_score": score})
                     trades.append(trade)
-                    hold_left[asset] = holding_cfg["hold_days_T"]
+                    if was_flat:
+                        entry_t[asset] = t_index
+                    last_buy_t[asset] = t_index
                     return True
                 log_blocked(asset, "buy", "blocked_by_cash", price)
                 return False
@@ -544,34 +821,43 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                     if not can_trade:
                         log_blocked(chosen, "buy", "blocked_by_calendar", price)
                     else:
-                        qty = size_buy(
-                            portfolio.cash,
-                            price,
-                            score,
-                            buy_cfg["buy_scale"],
-                            buy_cfg["buy_cap"],
-                            buy_cfg["buy_min_cash_reserve"],
-                            mode=buy_size_mode,
-                            fixed_fraction=(
-                                fixed_fraction_override
-                                if fixed_fraction_override is not None
-                                else buy_fixed_fraction
-                            ),
-                            fee_rate=fee,
-                        )
-                        if qty > 0:
-                            trade = portfolio.buy(chosen, qty, price, fee)
-                            reason = "buy_momentum" if (
-                                (chosen == "gold" and signal_gold["momentum_buy"])
-                                or (chosen == "btc" and signal_btc["momentum_buy"])
-                            ) else "buy_reversion"
-                            trade.update(
-                                {"date": date, "t": t_index, "reason": reason, "signal_score": score}
-                            )
-                            trades.append(trade)
-                            hold_left[chosen] = holding_cfg["hold_days_T"]
+                        if (
+                            min_days_between_buys > 0
+                            and (t_index - last_buy_t[chosen]) < min_days_between_buys
+                        ):
+                            log_blocked(chosen, "buy", "blocked_by_buy_cooldown", price)
                         else:
-                            log_blocked(chosen, "buy", "blocked_by_cash", price)
+                            was_flat = portfolio.positions[chosen] <= 0
+                            qty = size_buy(
+                                portfolio.cash,
+                                price,
+                                score,
+                                buy_cfg["buy_scale"],
+                                buy_cfg["buy_cap"],
+                                buy_cfg["buy_min_cash_reserve"],
+                                mode=buy_size_mode,
+                                fixed_fraction=(
+                                    fixed_fraction_override
+                                    if fixed_fraction_override is not None
+                                    else buy_fixed_fraction
+                                ),
+                                fee_rate=fee,
+                            )
+                            if qty > 0:
+                                trade = portfolio.buy(chosen, qty, price, fee)
+                                reason = "buy_momentum" if (
+                                    (chosen == "gold" and signal_gold["momentum_buy"])
+                                    or (chosen == "btc" and signal_btc["momentum_buy"])
+                                ) else "buy_reversion"
+                                trade.update(
+                                    {"date": date, "t": t_index, "reason": reason, "signal_score": score}
+                                )
+                                trades.append(trade)
+                                if was_flat:
+                                    entry_t[chosen] = t_index
+                                last_buy_t[chosen] = t_index
+                            else:
+                                log_blocked(chosen, "buy", "blocked_by_cash", price)
                 else:
                     if buy_gold_allowed:
                         log_blocked("gold", "buy", "blocked_by_cash", price_gold_trade)
@@ -597,8 +883,20 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                 "nav_btc": nav_btc,
                 "state_extreme": _state_label(extreme_active),
                 "state_no_buy": state_no_buy,
-                "hold_left_gold": hold_left["gold"],
-                "hold_left_btc": hold_left["btc"],
+                "hold_left_gold": max(
+                    0,
+                    min_days_between_sells
+                    - (t_index - (last_buy_t["gold"] if sell_hold_ref == "last_buy" else entry_t["gold"])),
+                )
+                if (last_buy_t["gold"] if sell_hold_ref == "last_buy" else entry_t["gold"]) is not None
+                else 0,
+                "hold_left_btc": max(
+                    0,
+                    min_days_between_sells
+                    - (t_index - (last_buy_t["btc"] if sell_hold_ref == "last_buy" else entry_t["btc"])),
+                )
+                if (last_buy_t["btc"] if sell_hold_ref == "last_buy" else entry_t["btc"]) is not None
+                else 0,
                 "profit_gold": signal_gold["profit_score"],
                 "profit_btc": signal_btc["profit_score"],
                 "chosen_buy_asset": chosen_asset,
@@ -606,6 +904,54 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
                 "sell_flag_btc": sell_flag_btc,
             }
         )
+        if return_debug:
+            trades_today = trades[trades_start:]
+            actions = {"gold": [], "btc": []}
+            for trade in trades_today:
+                asset = trade.get("asset")
+                if asset in actions:
+                    actions[asset].append(trade)
+
+            state_extreme = _state_label(extreme_active)
+            for asset, price, extreme_metric, extreme_threshold in [
+                ("gold", price_gold_trade, extreme_metric_gold, extreme_threshold_gold),
+                ("btc", price_btc, extreme_metric_btc, extreme_threshold_btc),
+            ]:
+                action = "none"
+                action_reason = ""
+                if actions[asset]:
+                    actual = [t for t in actions[asset] if t.get("qty", 0) > 0]
+                    chosen_trade = actual[0] if actual else actions[asset][0]
+                    if chosen_trade.get("qty", 0) > 0:
+                        action = chosen_trade.get("side", "none")
+                    else:
+                        action = "blocked"
+                    action_reason = chosen_trade.get("reason", "")
+
+                extreme_price_threshold = np.nan
+                if extreme_max_price[asset] > 0:
+                    extreme_price_threshold = extreme_E * extreme_max_price[asset]
+
+                debug_rows.append(
+                    {
+                        "date": date,
+                        "t": t_index,
+                        "asset": asset,
+                        "price": price,
+                        "E": extreme_E,
+                        "threshold": extreme_price_threshold,
+                        "no_buy_state": state_no_buy,
+                        "extreme_state": state_extreme,
+                        "target_position": chosen_asset,
+                        "action": action,
+                        "action_reason": action_reason,
+                        "no_buy_released": bool(no_buy_released.get(asset, False)),
+                        "cooldown_remaining": no_buy_days_left[asset],
+                        "skipped_extreme_due_to_history": skipped_extreme_due_to_history,
+                        "extreme_metric": extreme_metric,
+                        "extreme_threshold": extreme_threshold,
+                    }
+                )
 
     results_df = pd.DataFrame(records)
     results_df["dd"] = calc_drawdown(results_df["nav_total"])
@@ -630,4 +976,8 @@ def run_backtest(price_df: pd.DataFrame, config: Dict):
         "W_min": float(min(w_values)) if w_values else None,
         "W_max": float(max(w_values)) if w_values else None,
     }
+    if return_debug:
+        debug_df = pd.DataFrame(debug_rows)
+        state_events_df = pd.DataFrame(state_events)
+        return results_df, trades_df, w_stats, debug_df, state_events_df
     return results_df, trades_df, w_stats

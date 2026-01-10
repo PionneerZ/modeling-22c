@@ -1,3 +1,5 @@
+"""One-off reproduction pipeline with debug exports."""
+
 from __future__ import annotations
 
 import argparse

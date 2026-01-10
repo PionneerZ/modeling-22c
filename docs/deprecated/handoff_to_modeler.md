@@ -44,7 +44,7 @@
 2) 信号尺度与 W 位置 → 证据：`profit_*` 分布偏小/偏大 → 去看 `config/base.yaml:thresholds/weight_factor` 与 `src/backtest.py`。
 3) 状态机边界 → 证据：`state_no_buy` 或 `state_extreme` 长期占用 → 去看 `src/backtest.py` 的 no-buy/extreme 释放逻辑。
 
-## 5. 可执行建模规范（基于 `论文1复刻memo.pdf` + `replication1.html`）
+## 5. 可执行建模规范（基于 `assets/papers/memo.pdf` + `baseline notebook (archived)`）
 ### 5.1 数据与日历
 - 数据源：`BCHAIN-MKPRU.csv` 与 `LBMA-GOLD.csv`；日期格式 `%m/%d/%y`。
 - 时间区间：`2016-09-11` 到 `2021-09-10`，按自然日创建主时间轴。
@@ -81,7 +81,7 @@
 - 买入执行与资金分配：`src/strategy.py:size_buy` 与 `src/backtest.py` 的 buy 分支。
 - 卖出条件与持有：`src/strategy.py:should_sell`、`src/backtest.py` 的 hold 逻辑、`src/portfolio.py` 的 avg_cost。
 
-## 6. 当前实现 vs `replication1.html` 差异清单（改动前必看）
+## 6. 当前实现 vs `baseline notebook (archived)` 差异清单（改动前必看）
 ### 6.1 信号
 - MA：当前为加权 MA（`w_scheme=linear`），Notebook 为简单均值。
 - Momentum 条件：当前 `thr_grad/thr_ma_diff` 默认 1000，Notebook 为 `>0`（并用 `score>100` 门槛）。
@@ -104,6 +104,7 @@
 ### 6.5 交易日与数据对齐
 - 当前 gold 仅交易日可交易（周末阻断），Notebook 用 ffill 后价格每日可交易。
 - 当前 `end_date=2021-09-11` + `valuation_end`，Notebook 止于 `2021-09-10`。
+
 
 
 

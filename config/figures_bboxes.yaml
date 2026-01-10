@@ -1,4 +1,4 @@
-pdf_path: paper_ascii.pdf
+pdf_path: assets/papers/paper.pdf
 dpi: 200
 exclude_figures:
   - 8

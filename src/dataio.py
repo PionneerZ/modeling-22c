@@ -69,6 +69,34 @@ def _resolve_column_map(config: Dict) -> Dict[str, Optional[str]]:
     }
 
 
+def _build_master_index(
+    start_date: pd.Timestamp,
+    end_date: pd.Timestamp,
+    end_mode: str,
+    calendar_mode: str,
+) -> Tuple[pd.DatetimeIndex, pd.DatetimeIndex, pd.Timestamp]:
+    if calendar_mode not in {"business", "btc"}:
+        raise ValueError(f"unsupported calendar_anchor: {calendar_mode}")
+    freq = "B" if calendar_mode == "business" else "D"
+    master_idx = pd.date_range(start=start_date, end=end_date, freq=freq)
+    if master_idx.empty:
+        raise ValueError("master_index is empty; check start/end dates.")
+
+    if end_mode == "trade_end":
+        trade_end = master_idx[-1]
+    else:
+        if freq == "B":
+            trade_end = (end_date - pd.offsets.BDay(1)).normalize()
+        else:
+            trade_end = (end_date - pd.Timedelta(days=1)).normalize()
+
+    if trade_end < master_idx[0]:
+        raise ValueError("end_date is earlier than start_date after applying end_date_mode.")
+
+    trade_idx = pd.date_range(start=master_idx[0], end=trade_end, freq=freq)
+    return master_idx, trade_idx, trade_end
+
+
 def _load_split_files(
     gold_path: Path,
     btc_path: Path,
@@ -159,27 +187,21 @@ def load_price_data(config: Dict) -> pd.DataFrame:
     if end_mode not in {"trade_end", "valuation_end"}:
         raise ValueError(f"unsupported end_date_mode: {end_mode}")
 
-    trade_end = end_date if end_mode == "trade_end" else end_date - pd.Timedelta(days=1)
-    if trade_end < start_date:
-        raise ValueError("end_date is earlier than start_date after applying end_date_mode.")
-
     raw_min = df["date"].min()
     raw_max = df["date"].max()
-    if raw_min > start_date or raw_max < trade_end:
+    calendar_anchor = data_cfg.get("calendar_anchor", "business")
+    master_idx, trade_idx, trade_end = _build_master_index(
+        start_date, end_date, end_mode, calendar_anchor
+    )
+
+    if raw_min > master_idx[0] or raw_max < trade_end:
         raise ValueError(
-            f"data does not cover required trade range: {start_date.date()} to {trade_end.date()}. "
+            f"data does not cover required trade range: {master_idx[0].date()} to {trade_end.date()}. "
             f"available: {raw_min.date()} to {raw_max.date()}"
         )
 
-    calendar_anchor = data_cfg.get("calendar_anchor", "btc")
-    if calendar_anchor != "btc":
-        raise ValueError(f"unsupported calendar_anchor: {calendar_anchor}")
-
-    idx = pd.date_range(start=start_date, end=end_date, freq="D")
-    trade_idx = pd.date_range(start=start_date, end=trade_end, freq="D")
-
-    gold_series_raw = df.set_index("date")["price_gold"].reindex(idx)
-    btc_series_raw = df.set_index("date")["price_btc"].reindex(idx)
+    gold_series_raw = df.set_index("date")["price_gold"].reindex(master_idx)
+    btc_series_raw = df.set_index("date")["price_btc"].reindex(master_idx)
 
     btc_trade_series = btc_series_raw.reindex(trade_idx)
     missing_btc = btc_trade_series[btc_trade_series.isna()].index.tolist()
@@ -187,10 +209,9 @@ def load_price_data(config: Dict) -> pd.DataFrame:
         ranges = _missing_ranges(missing_btc)
         raise ValueError(f"btc data missing within trade range: {ranges}")
 
-    weekday_mask = pd.Series(idx.weekday < 5, index=idx)
-    gold_weekday = gold_series_raw[weekday_mask]
-    missing_gold_weekday = gold_weekday[gold_weekday.isna()].index.tolist()
-    missing_gold_weekend = gold_series_raw[(~weekday_mask) & gold_series_raw.isna()].index.tolist()
+    weekday_mask = pd.Series(master_idx.weekday < 5, index=master_idx)
+    trading_mask = weekday_mask if calendar_anchor == "btc" else pd.Series(True, index=master_idx)
+    missing_gold_trading = gold_series_raw[trading_mask & gold_series_raw.isna()].index.tolist()
 
     gold_ffill_for_valuation = bool(data_cfg.get("gold_ffill_for_valuation", True))
     if gold_ffill_for_valuation:
@@ -205,7 +226,7 @@ def load_price_data(config: Dict) -> pd.DataFrame:
     if btc_series.isna().all():
         raise ValueError("bitcoin price series is empty after alignment.")
 
-    is_trading_btc = (idx <= trade_end)
+    is_trading_btc = (master_idx <= trade_end)
     gold_trade_weekdays_only = bool(data_cfg.get("gold_trade_weekdays_only", True))
     gold_trade_on_filled = bool(data_cfg.get("gold_trade_on_filled", False))
     gold_trade_fill_method = data_cfg.get("gold_trade_fill_method", "ffill")
@@ -221,16 +242,18 @@ def load_price_data(config: Dict) -> pd.DataFrame:
         gold_trade_available = gold_series_raw.notna()
 
     if gold_trade_weekdays_only:
-        is_trading_gold = (idx.weekday < 5) & (idx <= trade_end) & gold_trade_available
+        is_trading_gold = trading_mask & (master_idx <= trade_end) & gold_trade_available
     else:
-        is_trading_gold = (idx <= trade_end) & gold_trade_available
+        is_trading_gold = (master_idx <= trade_end) & gold_trade_available
 
     out = pd.DataFrame(
         {
-            "date": idx,
-            "t": range(0, len(idx)),
+            "date": master_idx,
+            "t": range(0, len(master_idx)),
             "price_gold": gold_series.values,
-            "price_gold_trade": (gold_trade_series.values if gold_trade_on_filled else gold_series_raw.values),
+            "price_gold_trade": (
+                gold_trade_series.values if gold_trade_on_filled else gold_series_raw.values
+            ),
             "price_btc": btc_series.values,
             "is_trading_gold": is_trading_gold,
             "is_trading_btc": is_trading_btc,
@@ -245,10 +268,11 @@ def load_price_data(config: Dict) -> pd.DataFrame:
         "end_date": str(end_date.date()),
         "trade_end": str(trade_end.date()),
         "calendar_anchor": calendar_anchor,
+        "master_start": str(master_idx[0].date()),
+        "master_end": str(master_idx[-1].date()),
         "btc_missing_days": len(missing_btc),
         "gold_missing_total": int(gold_series_raw.isna().sum()),
-        "gold_missing_weekday": len(missing_gold_weekday),
-        "gold_missing_weekend": len(missing_gold_weekend),
+        "gold_missing_trading": len(missing_gold_trading),
         "gold_ffill_for_valuation": gold_ffill_for_valuation,
         "gold_trade_weekdays_only": gold_trade_weekdays_only,
         "gold_trade_on_filled": gold_trade_on_filled,
@@ -265,10 +289,8 @@ def load_price_data(config: Dict) -> pd.DataFrame:
         data_info["trade_end"],
         "| btc_missing_days",
         data_info["btc_missing_days"],
-        "| gold_missing_weekday",
-        data_info["gold_missing_weekday"],
-        "| gold_missing_weekend",
-        data_info["gold_missing_weekend"],
+        "| gold_missing_trading",
+        data_info["gold_missing_trading"],
     )
 
     return out.reset_index(drop=True)

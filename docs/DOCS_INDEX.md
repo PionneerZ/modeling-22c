@@ -11,9 +11,9 @@ Primary docs:
 - `docs/spec_extracted.md`: paper spec extraction.
 
 Deprecated (kept for context):
-- `docs/reproduce.md`
-- `docs/handoff_to_writer.md`
-- `docs/handoff_to_modeler.md`
+- `docs/deprecated/reproduce.md`
+- `docs/deprecated/handoff_to_writer.md`
+- `docs/deprecated/handoff_to_modeler.md`
 
 Other:
 - `experiments/README.md`: non-production scripts and diagnostics.

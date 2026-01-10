@@ -1,4 +1,4 @@
-# Repository Guidelines
+﻿# Repository Guidelines
 
 ## Project Structure & Module Organization
 - `src/`: core logic (data loading, indicators, strategy, backtest, metrics, plots).
@@ -29,10 +29,9 @@
 - No formatting or lint tooling is configured; keep edits minimal and readable.
 
 ## Reproduction References (must read before logic changes)
-- Original paper: `无水印-2229059.pdf`.
+- Original paper: `assets/papers/paper.pdf`.
 - Spec extraction: `docs/spec_extracted.md`.
-- Modeling memo: `论文1复刻memo.pdf`.
-- Baseline replication notebook: `replication1.html`.
+- Modeling memo: `assets/papers/memo.pdf`.
 - Ambiguities and deviations: `docs/assumption_ledger.md`.
 - Output contract: `docs/interface_contract.md`.
 
@@ -57,3 +56,4 @@
 - Treat `outputs/` as generated artifacts; avoid manual edits.
 - Use the paper data in `problem/` as the primary source when reproducing
   results (`problem/BCHAIN-MKPRU.csv`, `problem/LBMA-GOLD.csv`).
+

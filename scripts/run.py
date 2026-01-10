@@ -11,6 +11,7 @@ import numpy as np
 from src import dataio, plots
 from src.backtest import run_backtest
 from src.metrics import build_metrics
+from src.params import resolve_paper_params
 from src.utils import ensure_dir, load_yaml, make_run_id, save_json
 
 
@@ -26,8 +27,7 @@ def _format_data_info(data_info: dict) -> list[str]:
         f"- raw_range: {data_info.get('raw_min')} to {data_info.get('raw_max')}",
         f"- trade_end: {data_info.get('trade_end')}",
         f"- btc_missing_days: {data_info.get('btc_missing_days')}",
-        f"- gold_missing_weekday: {data_info.get('gold_missing_weekday')}",
-        f"- gold_missing_weekend: {data_info.get('gold_missing_weekend')}",
+        f"- gold_missing_trading: {data_info.get('gold_missing_trading')}",
         f"- gold_ffill_for_valuation: {data_info.get('gold_ffill_for_valuation')}",
         f"- gold_trade_weekdays_only: {data_info.get('gold_trade_weekdays_only')}",
         "",
@@ -35,7 +35,8 @@ def _format_data_info(data_info: dict) -> list[str]:
 
 
 def write_notes(path: Path, config: dict, run_id: str, run_path: Path, data_info: dict | None) -> None:
-    params = config["holding"]["hold_days_T"], config["no_buy"]["rebuy_pct_N"], config["extreme"]["extreme_sell_pct_E"]
+    paper_params = resolve_paper_params(config)
+    params = (paper_params["hold_T"], paper_params["reentry_N"], paper_params["extreme_E"])
     fee_pair = (config["fees"]["fee_gold"], config["fees"]["fee_btc"])
     change_note = config.get("run", {}).get("change_note")
     lines = [
@@ -64,6 +65,7 @@ def write_notes(path: Path, config: dict, run_id: str, run_path: Path, data_info
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, help="path to config yaml")
+    parser.add_argument("--outdir", default=None, help="override outputs directory")
     args = parser.parse_args()
 
     config = load_yaml(args.config)
@@ -78,8 +80,12 @@ def main():
 
     results_df, trades_df, w_stats = run_backtest(prices, config)
 
-    run_id = config["run"].get("run_id") or make_run_id()
-    out_dir = ensure_dir(Path("outputs") / run_id)
+    if args.outdir:
+        out_dir = ensure_dir(Path(args.outdir))
+        run_id = out_dir.name
+    else:
+        run_id = config["run"].get("run_id") or make_run_id()
+        out_dir = ensure_dir(Path("outputs") / run_id)
     figs_dir = ensure_dir(out_dir / "figs")
 
     results_path = out_dir / "results_table.csv"

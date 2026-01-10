@@ -1,0 +1,42 @@
+{
+  "final_nav": 235754.31628904337,
+  "ROI": 234.75431628904337,
+  "maxDD": -0.3535957393065199,
+  "max_drawdown": -0.3535957393065199,
+  "trades_count": 1884,
+  "params": {
+    "paper_T": 12,
+    "paper_N": 0.6,
+    "paper_E": 0.89,
+    "lookback_M": 5,
+    "extreme_C": 5.0,
+    "margin_L": 10.0,
+    "w_scheme": "equal",
+    "thr_grad": 1.0,
+    "thr_ma_diff": 1.0,
+    "buy_scale": 10.0,
+    "buy_cap": 1.0,
+    "min_days_between_buys": 0,
+    "min_days_between_sells": 12,
+    "no_buy_cooldown_days": 0,
+    "no_buy_release_mode": "price",
+    "no_buy_scope": "asset"
+  },
+  "fee_pair": {
+    "fee_gold": 0.01,
+    "fee_btc": 0.02
+  },
+  "run_id": "run_fixpack",
+  "data_range": "2016-09-11 to 2021-09-10",
+  "calendar_mode": "btc",
+  "end_date_mode": "trade_end",
+  "seed": 42,
+  "W": {
+    "W_C": 100000.0,
+    "W_use": [
+      "btc"
+    ],
+    "W_min": 0.029991518398596876,
+    "W_max": 100000.0
+  }
+}

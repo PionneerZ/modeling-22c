@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 dist/
 build/
 *.egg-info/
@@ -8,4 +10,8 @@ build/
 .idea/
 .DS_Store
 .env
-outputs/
+outputs/*
+!outputs/_milestones/
+!outputs/_milestones/**
+outputs/**/_tmp*
+outputs/**/pages/

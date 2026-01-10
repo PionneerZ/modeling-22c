@@ -1,3 +1,5 @@
+"""Utility: locate paper window indices for Figure 8/9 alignment."""
+
 from __future__ import annotations
 
 import argparse

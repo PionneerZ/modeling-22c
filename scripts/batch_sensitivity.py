@@ -17,6 +17,7 @@ from src.utils import ensure_dir, load_yaml
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/reproduce_tables.yaml")
+    parser.add_argument("--outdir", default="outputs/fee_sweep")
     args = parser.parse_args()
 
     cfg = load_yaml(args.config)
@@ -26,8 +27,10 @@ def main():
     prices = dataio.load_price_data(base_cfg)
 
     params = cfg["fee_sensitivity"]["params"]
-    base_cfg["holding"]["hold_days_T"] = params["T"]
-    base_cfg["no_buy"]["rebuy_pct_N"] = params["N"]
+    base_cfg["paper_params"]["hold_T"] = params["T"]
+    base_cfg["paper_params"]["reentry_N"] = params["N"]
+    base_cfg["paper_params"]["extreme_E"] = params["E"]
+    base_cfg["holding"]["min_days_between_sells"] = params["T"]
     base_cfg["extreme"]["extreme_sell_pct_E"] = params["E"]
 
     results = []
@@ -50,7 +53,7 @@ def main():
             }
         )
 
-    out_dir = ensure_dir(Path("outputs") / "fee_sweep")
+    out_dir = ensure_dir(Path(args.outdir))
     out_path = out_dir / "fee_sensitivity.csv"
     pd.DataFrame(results).to_csv(out_path, index=False)
 

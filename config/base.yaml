@@ -2,6 +2,10 @@ run:
   initial_cash: 1000.0
   seed: 42
   change_note: "align: memo/notebook signal/weight/sizing; target full paper reproduction"
+  guardrail:
+    enabled: true
+    hard_fail: false
+    last_known_good_final_nav: 150000.0
 
 data:
   path: data/sample_prices.csv  # fallback sample
@@ -29,14 +33,20 @@ momentum:
   n_window: 5
   w_scheme: equal  # equal | linear | exp
 
+paper_params:
+  hold_T: 12
+  reentry_N: 0.6
+  extreme_E: 0.89
+  lookback_M: 5
+
 thresholds:
-  thr_grad: 1.0
-  thr_ma_diff: 1.0
+  thr_grad: 0.0
+  thr_ma_diff: 0.0
 
 weight_factor:
   W_C: 100000.0
-  W_use: ["btc"]
-  apply_mode: compare  # compare | score | none
+  W_use: ["all"]
+  apply_mode: score  # compare | score | none
   use_t_plus_one: true
 
 selling:
@@ -48,24 +58,29 @@ extreme:
   extreme_C: 5.0
   extreme_sell_pct_E: 0.89
   extreme_deltaP: null
-  assets: ["btc"]
-  min_history_days: 420
+  assets: ["gold", "btc"]
+  min_history_days: 1600
+  avg_mode: window  # positive_history | window
+  avg_window_days: 0  # used when avg_mode=window
 
 no_buy:
-  rebuy_pct_N: 0.6
-  no_buy_days: 0
-  mode: price
-  scope: global
+  cooldown_days: 60
+  release_mode: hybrid
+  release_direction: drop  # drop | recover
+  scope: asset
   rebuy_on_release: true
-  max_price_ref: max  # max | sell
+  max_price_ref: extreme_window  # extreme_window | sell
+  release_frac: null
   rebuy_fraction: 1.0
 
 holding:
-  hold_days_T: 12
+  min_days_between_buys: 0
+  min_days_between_sells: 12
+  sell_hold_ref: last_buy  # entry | last_buy
 
 buy_sizing:
   mode: fixed_fraction  # score | fixed_fraction
-  fixed_fraction: 0.6
+  fixed_fraction: 0.5
   buy_scale: 10.0
   buy_cap: 1.0
   buy_min_cash_reserve: 0.0
@@ -77,15 +92,18 @@ strategy:
   mode: full  # full | baseline
 
 signals:
-  ma_include_current: true
-  require_full_window: false
-  reversion_mode: below_ma  # below_ma | below_ma_pct
+  ma_include_current: false
+  require_full_window: true
+  reversion_mode: below_ma_pct  # below_ma | below_ma_pct
   reversion_pct: null
-  score_mode: max  # max | sum
-  score_threshold: 0.0
+  score_mode: sum  # max | sum
+  score_threshold: 10.0
 
 buy_logic:
-  mode: single  # single | multi
+  mode: multi  # single | multi
+  rebalance_on_buy: false
+  rebalance_threshold: 100.0
+  rebalance_ignore_hold: true
 
 plots:
   window_btc_t: [1610, 1760]

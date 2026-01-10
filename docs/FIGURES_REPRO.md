@@ -21,6 +21,12 @@ This command will:
 - `outputs/<run>/figures/compare/figX_compare.png`
 - `outputs/<run>/figures/report.md`
 
+## Milestones (tracked)
+If you want to keep a reviewed snapshot, publish it:
+```bash
+python scripts/publish_milestone.py --run outputs/run_fixpack --name M01_fixpack --config config/fixpack.yaml
+```
+
 ## Paper figure extraction
 If you want to re-extract with custom bounding boxes:
 ```bash

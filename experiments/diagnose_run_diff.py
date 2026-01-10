@@ -1,3 +1,5 @@
+"""Diagnostics: compare two runs and export NAV/event diffs."""
+
 from __future__ import annotations
 
 import argparse

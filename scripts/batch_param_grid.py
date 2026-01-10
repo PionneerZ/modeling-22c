@@ -18,6 +18,7 @@ from src.utils import ensure_dir, load_yaml
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/reproduce_tables.yaml")
+    parser.add_argument("--outdir", default="outputs/param_grid")
     args = parser.parse_args()
 
     cfg = load_yaml(args.config)
@@ -30,8 +31,13 @@ def main():
     results = []
     for T, N, E in product(grid["T"], grid["N"], grid["E"]):
         run_cfg = copy.deepcopy(base_cfg)
-        run_cfg["holding"] = {**base_cfg["holding"], "hold_days_T": T}
-        run_cfg["no_buy"] = {**base_cfg["no_buy"], "rebuy_pct_N": N}
+        run_cfg["paper_params"] = {
+            **base_cfg["paper_params"],
+            "hold_T": T,
+            "reentry_N": N,
+            "extreme_E": E,
+        }
+        run_cfg["holding"] = {**base_cfg["holding"], "min_days_between_sells": T}
         run_cfg["extreme"] = {**base_cfg["extreme"], "extreme_sell_pct_E": E}
         run_cfg["fees"] = {**base_cfg["fees"], "fee_gold": grid["fee_gold"], "fee_btc": grid["fee_btc"]}
 
@@ -52,7 +58,7 @@ def main():
             }
         )
 
-    out_dir = ensure_dir(Path("outputs") / "param_grid")
+    out_dir = ensure_dir(Path(args.outdir))
     out_path = out_dir / "param_sweep.csv"
     pd.DataFrame(results).to_csv(out_path, index=False)
 

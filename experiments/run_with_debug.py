@@ -1,3 +1,5 @@
+"""Run a backtest with full debug output for diagnostics."""
+
 from __future__ import annotations
 
 import argparse

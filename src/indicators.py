@@ -33,7 +33,9 @@ def weighted_moving_average(prices: np.ndarray, window: int, scheme: str) -> flo
 def price_gradient(prices: np.ndarray, window: int) -> float:
     if prices.size == 0:
         return 0.0
-    start_idx = max(0, prices.size - window)
+    if window <= 1:
+        return 0.0
+    start_idx = max(0, prices.size - window + 1)
     return float(prices[-1] - prices[start_idx])
 
 

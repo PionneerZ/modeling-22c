@@ -3,17 +3,16 @@ This file records the final goals for this repo. Use it as the stable target for
 future changes and reviews.
 
 ## Primary References
-- `无水印-2229059.pdf` (original paper).
+- `assets/papers/paper.pdf` (original paper).
 - `docs/spec_extracted.md` (paper formulas and thresholds).
-- `论文1复刻memo.pdf` (modeling interpretation and pitfalls).
-- `replication1.html` (baseline notebook and preprocessing logic).
+- `assets/papers/memo.pdf` (modeling interpretation and pitfalls).
 - `docs/interface_contract.md` (output contract).
 - `docs/assumption_ledger.md` (ambiguities and deviations).
 
 ## Reproduction Targets
 - Implement the paper's trading logic (momentum, mean reversion, profitability,
   selling, extreme, no-buy, holding, daily order: sell then buy), aligned with
-  `docs/spec_extracted.md` and `论文1复刻memo.pdf`.
+  `docs/spec_extracted.md` and `assets/papers/memo.pdf`.
 - Use the paper time range 2016-09-11 to 2021-09-10, initial cash 1000, BTC
   calendar anchor, and t=0 on start_date; gold trades only on trading days but
   is valued every day.
@@ -26,8 +25,9 @@ future changes and reviews.
   plots.
 
 ## Macro Strategy
-- Align preprocessing and calendar handling with `replication1.html`
-  (master timeline, gold tradable flag, gold valuation fill, BTC daily anchor).
+- Align preprocessing and calendar handling with the paper spec and assumption
+  ledger (master timeline, gold tradable flag, gold valuation fill, BTC daily
+  anchor).
 - Validate model formulas against the memo's interpretation (buy signal as
   event intersection, profitability/weight logic, fixed margin L, holding T).
 - Iterate parameter tuning through `config/*.yaml` until tables and curves
@@ -55,4 +55,4 @@ future changes and reviews.
   state logic.
 - Maintain `docs/assumption_ledger.md` for any paper ambiguities or
   implementation deviations.
-- Keep `docs/reproduce.md` up to date with the minimal reproducibility steps.
+- Keep `docs/REPRODUCTION.md` up to date with the minimal reproducibility steps.
