@@ -1,0 +1,107 @@
+run:
+  initial_cash: 1000.0
+  seed: 42
+  run_id: run_highnav_ref
+  change_note: "highnav_ref (inferred from outputs/run_20260109_120343)"
+
+data:
+  path: data/sample_prices.csv
+  gold_path: problem/LBMA-GOLD.csv
+  btc_path: problem/BCHAIN-MKPRU.csv
+  column_map:
+    date: Date
+    gold: "USD (PM)"
+    btc: Value
+  date_format: "%m/%d/%y"
+  start_date: "2016-09-11"
+  end_date: "2021-09-10"
+  end_date_mode: trade_end
+  calendar_anchor: btc
+  gold_ffill_for_valuation: true
+  gold_trade_weekdays_only: true
+  gold_trade_on_filled: false
+  gold_trade_fill_method: ffill
+
+fees:
+  fee_gold: 0.01
+  fee_btc: 0.02
+
+momentum:
+  n_window: 5
+  w_scheme: equal
+
+paper_params:
+  hold_T: 12
+  reentry_N: 0.6
+  extreme_E: 0.89
+  lookback_M: 5
+
+thresholds:
+  thr_grad: 1.0
+  thr_ma_diff: 1.0
+
+weight_factor:
+  W_C: 100000.0
+  W_use: ["btc"]
+  apply_mode: compare
+  use_t_plus_one: true
+
+selling:
+  margin_L: 10.0
+  avg_cost_method: weighted_avg
+  skip_if_buy_signal: true
+
+extreme:
+  extreme_C: 5.0
+  extreme_sell_pct_E: 0.89
+  extreme_deltaP: null
+  assets: ["gold", "btc"]
+  min_history_days: 420
+  avg_mode: positive_history
+  avg_window_days: 0
+
+no_buy:
+  cooldown_days: 0
+  release_mode: price
+  release_direction: drop
+  scope: asset
+  rebuy_on_release: true
+  max_price_ref: extreme_window
+  release_frac: 0.6
+  rebuy_fraction: 1.0
+
+holding:
+  min_days_between_buys: 0
+  min_days_between_sells: 12
+  sell_hold_ref: last_buy
+
+buy_sizing:
+  mode: fixed_fraction
+  fixed_fraction: 0.6
+  buy_scale: 10.0
+  buy_cap: 1.0
+  buy_min_cash_reserve: 0.0
+
+execution:
+  sell_then_buy: true
+
+strategy:
+  mode: full
+
+signals:
+  ma_include_current: true
+  require_full_window: false
+  reversion_mode: below_ma
+  reversion_pct: null
+  score_mode: max
+  score_threshold: 0.0
+
+buy_logic:
+  mode: single
+  rebalance_on_buy: false
+  rebalance_threshold: 0.0
+  rebalance_ignore_hold: true
+
+plots:
+  window_btc_t: [1610, 1760]
+  window_gold_t: [460, 560]

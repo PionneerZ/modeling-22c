@@ -13,7 +13,7 @@
 - `profit_gold`, `profit_btc`：利润评分。
 - `chosen_buy_asset`：当日买入选择（gold/btc/none）。
 - `sell_flag_gold`, `sell_flag_btc`：卖出信号标记（True/False）。
-- `t`（可选）：日序号（**t=0** 为 start_date 当天）。
+- `t`（可选）：自然日序号（Calendar Day），**t=0** 为 start_date 当天。
 
 ## outputs/run_<id>/trades.csv（交易日志）
 必含字段（含义）：
@@ -45,6 +45,17 @@
 - `fig2_drawdown.png`：回撤曲线。
 - `fig3_positions.png`：仓位比例。
 - `fig4_trades_window.png`（可选）：区间买卖点覆盖（Figure 8/9）。
+
+## outputs/run_<id>/figures/ (paper figure reproduction)
+- `ours/figX.png`：生成图（Figure 1–7）。
+- `paper/figX.png`：论文图（裁剪自 PDF）。
+- `compare/figX_compare.png`：paper vs ours 并排对比图。
+- `report.md`：逐图复现说明与对齐备注。
+
+## outputs/paper_figures/
+- `pages/page_<n>.png`：包含 Figure 的整页截图。
+- `figX_paper.png`：裁剪后的论文图。
+- `figures_manifest.csv`：figure_id/page/bbox/title 清单。
 
 ## outputs/run_<id>/notes.md
 运行口径、参数、变更摘要与差异来源。

@@ -1,0 +1,102 @@
+run:
+  initial_cash: 1000.0
+  seed: 42
+  change_note: 'paper_final: aligned T/N/E + no-buy/hold/index refactor'
+  guardrail:
+    enabled: true
+    hard_fail: false
+    last_known_good_final_nav: 150000.0
+  run_id: run_paper_ref
+data:
+  path: data/sample_prices.csv
+  gold_path: problem/LBMA-GOLD.csv
+  btc_path: problem/BCHAIN-MKPRU.csv
+  column_map:
+    date: Date
+    gold: USD (PM)
+    btc: Value
+  date_format: '%m/%d/%y'
+  start_date: '2016-09-11'
+  end_date: '2021-09-10'
+  end_date_mode: trade_end
+  calendar_anchor: btc
+  gold_ffill_for_valuation: true
+  gold_trade_weekdays_only: true
+  gold_trade_on_filled: false
+  gold_trade_fill_method: ffill
+fees:
+  fee_gold: 0.01
+  fee_btc: 0.02
+momentum:
+  n_window: 5
+  w_scheme: equal
+paper_params:
+  hold_T: 12
+  reentry_N: 0.61
+  extreme_E: 0.91
+  lookback_M: 5
+thresholds:
+  thr_grad: 0.0
+  thr_ma_diff: 0.0
+weight_factor:
+  W_C: 100000.0
+  W_use:
+  - all
+  apply_mode: score
+  use_t_plus_one: true
+selling:
+  margin_L: 10.0
+  avg_cost_method: weighted_avg
+  skip_if_buy_signal: true
+extreme:
+  extreme_C: 5.0
+  extreme_sell_pct_E: 0.91
+  extreme_deltaP: null
+  assets:
+  - gold
+  - btc
+  min_history_days: 1600
+  avg_mode: window
+  avg_window_days: 0
+no_buy:
+  cooldown_days: 60
+  release_mode: hybrid
+  release_direction: drop
+  scope: asset
+  rebuy_on_release: true
+  max_price_ref: extreme_window
+  release_frac: null
+  rebuy_fraction: 1.0
+holding:
+  min_days_between_buys: 0
+  min_days_between_sells: 12
+  sell_hold_ref: last_buy
+buy_sizing:
+  mode: fixed_fraction
+  fixed_fraction: 0.5
+  buy_scale: 10.0
+  buy_cap: 1.0
+  buy_min_cash_reserve: 0.0
+execution:
+  sell_then_buy: true
+strategy:
+  mode: full
+signals:
+  ma_include_current: false
+  require_full_window: true
+  reversion_mode: below_ma_pct
+  reversion_pct: null
+  score_mode: sum
+  score_threshold: 10.0
+buy_logic:
+  mode: multi
+  rebalance_on_buy: false
+  rebalance_threshold: 100.0
+  rebalance_ignore_hold: true
+plots:
+  window_btc_t:
+  - 1610
+  - 1760
+  window_gold_t:
+  - 460
+  - 560

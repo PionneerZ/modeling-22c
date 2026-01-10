@@ -1,4 +1,6 @@
-﻿# 写作交接：Results / Discussion
+﻿> Deprecated: see docs/USAGE.md and docs/REPRODUCTION.md.
+
+# 写作交接：Results / Discussion
 
 ## 0. A 需要交付什么（对齐论文写作）
 - Results：净值曲线（Figure 4 对标）、回撤、仓位变化，以及两张表（4.3 参数网格、4.4 费用敏感性）。
@@ -42,3 +44,7 @@
 - “论文未明确 no-buy 的释放规则，本文以 `no_buy_days=30` 进行时间阻断，可能导致回买节奏与原文不完全一致。”
 - “噪声归一化因子 W 的作用位置未完全明确，本文采用‘对 gold 进行下权重’的实现以体现 BTC 更高权重。”
 - “t 从 0 计数（start_date 当天为 t=0），并在 Figure 8/9 区间中使用该口径。”
+
+
+
+

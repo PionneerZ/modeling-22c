@@ -1,5 +1,0 @@
-date,t,asset,side,qty,price,notional,fee_paid,cash_change,reason,signal_score
-2016-09-12,1,btc,buy,1.6402316007020192,609.67,1000.0,20.0,-1020.0,buy_reversion,63.78684444444464
-2016-09-17,6,gold,buy,0.0,1308.35,0.0,0.0,0.0,blocked_by_calendar,0.0
-2016-09-18,7,gold,buy,0.0,1308.35,0.0,0.0,0.0,blocked_by_calendar,0.0
-2017-01-05,116,btc,sell,1.6402316007020192,994.67,1631.4891662702773,32.62978332540555,1598.8593829448719,extreme_sell,-3.050000000000068

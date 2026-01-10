@@ -1,4 +1,6 @@
-﻿# 复现入口与排错指南
+﻿> Deprecated: see docs/USAGE.md and docs/REPRODUCTION.md.
+
+# 复现入口与排错指南
 
 ## 0. 这仓库复现什么
 - 复现对象：Team #2229059 的黄金/比特币日交易策略。
@@ -116,3 +118,7 @@ python -m unittest discover -s tests
   1) 将阈值改为“相对变化/百分比”，而不是绝对美元差值；
   2) 评估 W 是否应用于信号阈值而非买量；
   3) 用论文 Figure 8/9 的买卖点时序反推 no-buy 长度与 extreme 触发条件。
+
+
+
+

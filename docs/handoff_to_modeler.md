@@ -1,4 +1,6 @@
-﻿# 统计交接：诊断 / 稳健性 / 差距归因
+﻿> Deprecated: see docs/USAGE.md and docs/REPRODUCTION.md.
+
+# 统计交接：诊断 / 稳健性 / 差距归因
 
 ## 0. C 要做什么（任务清单）
 - 诊断：确认状态机是否按口径运行（extreme/no-buy/holding/卖先买后）。
@@ -102,3 +104,7 @@
 ### 6.5 交易日与数据对齐
 - 当前 gold 仅交易日可交易（周末阻断），Notebook 用 ffill 后价格每日可交易。
 - 当前 `end_date=2021-09-11` + `valuation_end`，Notebook 止于 `2021-09-10`。
+
+
+
+
