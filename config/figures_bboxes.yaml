@@ -1,0 +1,42 @@
+pdf_path: paper_ascii.pdf
+dpi: 200
+exclude_figures:
+  - 8
+  - 9
+figures:
+  1:
+    page: 7
+    title: "Plots of bitcoin and gold"
+    bboxes:
+      - [86.4, 128.197, 297.639, 292.269]
+      - [297.638, 131.055, 508.872, 289.412]
+  2:
+    page: 7
+    title: "Bitcoin Price from 9/11/2016 to 9/10/2021"
+    bboxes:
+      - [127.559, 354.384, 467.719, 615.679]
+  3:
+    page: 9
+    title: "Flow Chart Describing our buy logic"
+    bboxes:
+      - [127.559, 86.4, 467.736, 243.459]
+  4:
+    page: 12
+    title: "Our results"
+    bboxes:
+      - [86.4, 158.096, 511.598, 394.056]
+  5:
+    page: 13
+    title: "The weight factor normalizing the magnitude of the signals"
+    bboxes:
+      - [170.079, 124.303, 425.204, 342.069]
+  6:
+    page: 13
+    title: "Results under different combinations"
+    bboxes:
+      - [170.079, 569.91, 425.191, 730.803]
+  7:
+    page: 15
+    title: "Results under different combinations"
+    bboxes:
+      - [127.559, 159.072, 467.718, 352.047]
